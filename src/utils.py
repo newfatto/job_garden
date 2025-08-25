@@ -1,6 +1,18 @@
-import json
-from src.files import JSONSaver, JSON_FILE_PATH_STR
+from typing import Any, Mapping, Optional
 
+def pick_identity(v: Mapping[str, Any]) -> Optional[str]:
+    """
+    Вернёт уникальный идентификатор вакансии для исключения дубликации.
+    Сначала пытаемся взять 'id', затем 'url' или 'alternate_url'.
+
+    :param v: словарь с описанием вакансии
+    :return: строковый идентификатор или None, если не найден
+    """
+    for key in ("id", "url", "alternate_url"):
+        val = v.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+    return None
 
 
 

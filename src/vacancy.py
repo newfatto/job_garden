@@ -1,6 +1,5 @@
 import json
 from typing import Optional, Tuple, Union
-from src.files import JSONSaver
 
 
 class Vacancy:
@@ -101,7 +100,7 @@ class Vacancy:
 
 
 if __name__ == '__main__':
-
+    from src.files import JSONSaver
     file = JSONSaver()
     vacancies_json = file.load_from_json()  # Получаем список словарей из JSON
 

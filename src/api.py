@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
         # Проверяем результат
         print("Сохранено вакансий:", len(vacancies))
-        print("Пример вакансии:", vacancies[4] if vacancies else "Файл пуст")
+        print("Пример вакансии:", vacancies[0] if vacancies else "Файл пуст")
 
     except Exception as e:
         print(f"Произошла ошибка: {e}")

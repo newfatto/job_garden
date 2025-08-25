@@ -1,60 +1,187 @@
 from src.base import FileWorker
 import json
 from config import JSON_FILE_PATH_STR
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Union, TYPE_CHECKING
+from src.utils import pick_identity
+if TYPE_CHECKING:
+    from src.vacancy import Vacancy
 
 
 class JSONSaver(FileWorker):
     """
-    Класс для сохранения информации о вакансиях в JSON-файл
-    """
-    def __init__(self, filename: str = JSON_FILE_PATH_STR):
-        self.filename = filename
+    Коннектор для работы с JSON-файлом вакансий.
 
-    def load_from_json(self) -> list:
+    Добавляет вакансию в файл без перезаписи
+    Не допускает дублей (по id/url/alternate_url)
+    Умеет фильтровать и удалять записи
+    """
+    def __init__(self, filename: str = JSON_FILE_PATH_STR) -> None:
+        """
+        :param filename: путь к JSON-файлу для хранения вакансий
+        """
+        self._filename: str = filename
+
+    def _read_all(self) -> List[Dict[str, Any]]:
+        """Безопасное чтение всего файла как списка словарей."""
         try:
-            with open(self.filename, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            with open(self._filename, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
         except FileNotFoundError:
             return []
-        except IOError as e:
+        except OSError as e:
             print(f"Ошибка чтения файла: {e}")
             return []
 
-    def save_to_json(self, vacancies: list) -> json:
-        """
-        Сохраняет вакансии в файл json
-        :param vacancies: список вакансий, который должен быть преобразован в json файл
-        :return: json файл
-        """
+    def _write_all(self, data: List[Dict[str, Any]]) -> None:
+        """Полная запись списка словарей в файл."""
         try:
-            with open(self.filename, 'w', encoding='utf-8') as f:
-                json.dump(vacancies, f, ensure_ascii=False, indent=4)
-        except IOError as e:
+            with open(self._filename, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except OSError as e:
             print(f"Ошибка записи в файл: {e}")
 
 
-    def add_vacancy(self, vacancy: 'Vacancy'):
+    def load_from_json(self) -> List[Dict[str, Any]]:
         """
-        Добавление вакансий в файл
-        :param vacancy: экземпляр класса Vacancy
-        :return:
+        Прочитать все вакансии из файла.
+        :return: список вакансий (каждая вакансия — словарь)
         """
-        try:
-            from src.vacancy import Vacancy
-            current_data = self.load_from_json()
-            current_data.append(vacancy)
-            self.save_to_json(current_data)
-        except TypeError:
-            print(f'В файл можно добавить только вакансию')
-        except Exception as e:
-            print(f'Возникла ошибка: {e}')
+        return self._read_all()
+
+    def save_to_json(self, vacancies: Iterable[Mapping[str, Any]]) -> None:
+        """
+        Сохранить список вакансий, добавляя их к уже сохранённым,
+        и убирая дубли по id/url/alternate_url.
+
+        :param vacancies: итерируемый набор словарей вакансий
+        """
+        current = self._read_all()
+        index = {}
+
+        for i, v in enumerate(current):
+            ident = pick_identity(v)
+            if ident:
+                index[ident] = i
+
+        for v in vacancies:
+            if not isinstance(v, Mapping):
+                print("Предупреждение: пропущен элемент не-словарь при сохранении.")
+                continue
+
+            ident = pick_identity(v)
+            if ident and ident in index:
+                # Обновляем существующую запись (например, если изменилась зарплата)
+                current[index[ident]] = dict(v)
+            else:
+                current.append(dict(v))
+                if ident:
+                    index[ident] = len(current) - 1
+
+        self._write_all(current)
 
 
-    def get_vacancy_info(self):
-        """Получение данных из файла по указанным критериям"""
-        pass
+    def add_vacancy(self, vacancy: Union[Mapping[str, Any], "Vacancy"]) -> None:
+        """
+        Добавить одну вакансию в файл.
+        """
+        if isinstance(vacancy, Mapping):
+            self.save_to_json([vacancy])
+            return
+
+        if hasattr(vacancy, "to_dict") and callable(getattr(vacancy, "to_dict")):
+            try:
+                self.save_to_json([vacancy.to_dict()])  # type: ignore[attr-defined]
+            except Exception as e:
+                print(f"Ошибка сериализации Vacancy: {e}")
+            return
+
+        raise TypeError("add_vacancy ожидает Mapping или объект Vacancy с to_dict().")
+
+    def get_vacancy_info(
+            self,
+            *,
+            keyword: Optional[str] = None,
+            city: Optional[str] = None,
+            min_salary: Optional[int] = None,
+            currency: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Вернёт список вакансий, удовлетворяющих критериям.
+
+        :param keyword: ключевое слово (ищется в названии и описании)
+        :param city: город (area.name или address.city)
+        :param min_salary: минимальная желаемая "from" (salary.from >= min_salary)
+        :param currency: валюта зарплаты (salary.currency)
+        :return: отфильтрованный список словарей вакансий
+        """
+        data = self._read_all()
+        kw = (keyword or "").strip().lower()
+        city_norm = (city or "").strip().lower()
+        cur_norm = (currency or "").strip().upper()
+
+        def match(v: Dict[str, Any]) -> bool:
+            if kw:
+                name = str(v.get("name", "")).lower()
+                resp = str(v.get("snippet", {}).get("responsibility", "")).lower()
+                req = str(v.get("snippet", {}).get("requirement", "")).lower()
+                if kw not in name and kw not in resp and kw not in req:
+                    return False
+
+            if city_norm:
+                area_name = str(v.get("area", {}).get("name", "")).lower()
+                addr_city = str(v.get("address", {}).get("city", "")).lower()
+                if city_norm not in area_name and city_norm not in addr_city:
+                    return False
+
+            if cur_norm:
+                sal = v.get("salary") or {}
+                if not isinstance(sal, dict) or (sal.get("currency") or "").upper() != cur_norm:
+                    return False
+
+            if isinstance(min_salary, int):
+                sal = v.get("salary") or {}
+                sal_from = sal.get("from")
+                if sal_from is None:
+                    return False
+                try:
+                    if int(sal_from) < int(min_salary):
+                        return False
+                except Exception:
+                    return False
+
+            return True
+
+        return [v for v in data if match(v)]
 
 
-    def delete_vacancy(self):
-        """Удаление информации о вакансиях"""
-        pass
+    def delete_vacancy(
+            self,
+            *,
+            vacancy_id: Optional[str] = None,
+            url: Optional[str] = None,
+    ) -> int:
+        """
+        Удалить вакансию(и) по `id` или `url`/`alternate_url`.
+
+        :param vacancy_id: строковый ID вакансии hh.ru
+        :param url: ссылка ('url' или 'alternate_url')
+        :return: количество удалённых записей
+        """
+        if not vacancy_id and not url:
+            raise ValueError("Нужно указать vacancy_id или url для удаления.")
+
+        before = self._read_all()
+
+        def should_delete(v: Dict[str, Any]) -> bool:
+            if vacancy_id and str(v.get("id", "")) == vacancy_id:
+                return True
+            if url and (v.get("url") == url or v.get("alternate_url") == url):
+                return True
+            return False
+
+        after = [v for v in before if not should_delete(v)]
+        deleted = len(before) - len(after)
+        if deleted:
+            self._write_all(after)
+        return deleted
