@@ -1,44 +1,50 @@
-"""
-Создать функцию для взаимодействия с пользователем. Функция должна взаимодействовать с пользователем через консоль.
-Возможности этой функции должны быть следующими:
-ввести поисковый запрос для запроса вакансий из hh.ru;
-получить топ N вакансий по зарплате (N запрашивать у пользователя);
-получить вакансии с ключевым словом в описании.
-Помимо этого функционала, можно придумать дополнительные возможности, которые покажутся удобными.
-"""
+from __future__ import annotations
+from typing import List, Optional, Tuple
+
+from src.api import HeadHunterAPI
+from src.vacancy import Vacancy
+from src.files import JSONSaver
+from src.utils import (parse_salary_range, print_vacancies, filter_vacancies, get_vacancies_by_salary,
+                       sort_get_top_vacancies)
 
 
-# Создание экземпляра класса для работы с API сайтов с вакансиями
-hh_api = HeadHunterAPI()
+def user_interaction() -> None:
+    """
+    Консольный интерфейс:
+    - запрос к hh.ru по ключевому слову
+    - фильтр по словам
+    - фильтр по зарплате (диапазон)
+    - сортировка по зарплате и top-N
+    - сохранение в JSON без дублей
+    """
+    api = HeadHunterAPI(user_agent="job-garden/1.0", per_page=50)
+    saver = JSONSaver()
 
-# Получение вакансий с hh.ru в формате JSON
-hh_vacancies = hh_api.get_vacancies("Python")
+    keyword = input("Введите поисковый запрос (например, Python): ").strip()
+    if not keyword:
+        print("Пустой запрос — выхожу.")
+        return
 
-# Преобразование набора данных из JSON в список объектов
-vacancies_list = Vacancy.cast_to_object_list(hh_vacancies)
+    top_n = int(input("Сколько топ-вакансий показать: ").strip() or "10")
+    words = input("Ключевые слова для фильтра (через пробел, можно пусто): ").split()
+    salary_s = input("Желаемая зарплата или диапазон (например, 120000-200000, можно пусто): ")
+    low, high = parse_salary_range(salary_s)
+    print("Идёт поиск подходящих вакансий...")
 
-# Пример работы контструктора класса с одной вакансией
-vacancy = Vacancy("Python Developer", "<https://hh.ru/vacancy/123456>", "100 000-150 000 руб.", "Требования: опыт работы от 3 лет...")
+    raw = api.load_vacancies(keyword, max_items=500)
 
-# Сохранение информации о вакансиях в файл
-json_saver = JSONSaver()
-json_saver.add_vacancy(vacancy)
-json_saver.delete_vacancy(vacancy)
+    vacancies = Vacancy.cast_to_object_list(raw)
 
-# Функция для взаимодействия с пользователем
-def user_interaction():
-    platforms = ["HeadHunter"]
-    search_query = input("Введите поисковый запрос: ")
-    top_n = int(input("Введите количество вакансий для вывода в топ N: "))
-    filter_words = input("Введите ключевые слова для фильтрации вакансий: ").split()
-    salary_range = input("Введите диапазон зарплат: ") # Пример: 100000 - 150000
+    if words:
+        vacancies = filter_vacancies(vacancies, words)
+    vacancies = get_vacancies_by_salary(vacancies, (low, high))
 
-    filtered_vacancies = filter_vacancies(vacancies_list, filter_words)
+    top = sort_get_top_vacancies(vacancies, top_n)
 
-    ranged_vacancies = get_vacancies_by_salary(filtered_vacancies, salary_range)
+    print_vacancies(top)
 
-    top_vacancies = sort_get_top_vacancies(ranged_vacancies, top_n)
-    print_vacancies(top_vacancies)
+    saver.save_to_json([v.to_dict() for v in top])
+    print(f"\nСохранено в файл: {len(top)} записей.")
 
 
 if __name__ == "__main__":

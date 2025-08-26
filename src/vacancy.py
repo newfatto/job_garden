@@ -1,127 +1,263 @@
-import json
-from typing import Optional, Tuple, Union
+from typing import Any, Iterable, List, Mapping, Optional
 
 
 class Vacancy:
     """
-    Класс для работы с вакансиями. Класс поддерживает методы сравнения вакансий между собой по зарплате и
-    валидирует данные, которыми инициализируются его атрибуты.
-    Способами валидации данных может быть проверка, указана или нет зарплата. В этом случае выставлять значение
-    зарплаты 0 или «Зарплата не указана» в зависимости от структуры класса.
+    Доменная модель вакансии.
+
+    Атрибуты:
+        id: строковый идентификатор вакансии (hh.ru) или None.
+        name: название вакансии.
+        city: город (area.name).
+        salary_from: нижняя граница зарплаты (int) или None.
+        salary_to: верхняя граница зарплаты (int) или None.
+        currency: валюта зарплаты (например, 'RUR') или None.
+        requirement: требования (snippet.requirement) или None.
+        responsibility: обязанности (snippet.responsibility) или None.
+        url: API-ссылка на вакансию (обязательное поле, при пустом — "-").
+        alternate_url: читаемая ссылка на вакансию или None.
+        employer: название работодателя или None.
+
+    Сравнения выполняются по «эффективной» зарплате:
+    берем среднее из (salary_from, salary_to); если указан один край — берем его;
+    если зарплата не указана, считаем 0.
     """
 
+    __slots__ = (
+        "id",
+        "name",
+        "city",
+        "salary_from",
+        "salary_to",
+        "currency",
+        "requirement",
+        "responsibility",
+        "url",
+        "alternate_url",
+        "employer",
+    )
 
-    def __init__(self, name: str, city: str, salary_currency: str, salary_from: int,
-                 salary_to: int, responsibility: str, url: str):
+    def __init__(
+        self,
+        *,
+        id: Optional[str],
+        name: str,
+        city: str,
+        salary_from: Optional[int],
+        salary_to: Optional[int],
+        currency: Optional[str],
+        requirement: Optional[str],
+        responsibility: Optional[str],
+        url: str,
+        alternate_url: Optional[str] = None,
+        employer: Optional[str] = None,
+    ) -> None:
         """
-        Инициализация объекта Vacancy
-        :param name: Название вакансии
-        :param city: Город вакансии
-        :param salary_currency: Валюта зарплаты
-        :param salary_from: Минимальная зарплата
-        :param salary_to: Максимальная зарплата
-        :param responsibility: Обязанности
-        :param url: Ссылка на вакансию
-        """
-        try:
-            self.name = name if name else 'Название не указано'
-            self.city = city if city else 'Город не указан'
-            self.salary_currency = salary_currency if salary_currency else 'Валюта не указана'
-            self.salary_from = salary_from if salary_from else 'Минимальная зарплата не указана'
-            self.salary_to = salary_to if salary_to else 'Максимальная зарплата не указана'
-            self.responsibility = responsibility if responsibility else 'Обязанности не указаны'
-            self.url = url if url else 'URL не указан'
-        except Exception as e:
-            print(f'При инициализации возникла ошибка: {e}')
+        Инициализация валидированными значениями.
 
+        :param id: строковый идентификатор вакансии hh.ru или None
+        :param name: название вакансии
+        :param city: город
+        :param salary_from: нижняя граница зарплаты или None
+        :param salary_to: верхняя граница зарплаты или None
+        :param currency: валюта зарплаты или None
+        :param requirement: требования (может быть None)
+        :param responsibility: обязанности (может быть None)
+        :param url: ссылка на вакансию (обязательное поле)
+        :param alternate_url: читаемая ссылка на вакансию
+        :param employer: название работодателя
+        """
+        self.id = self._validate_id(id)
+        self.name = self._validate_str(name, default="Вакансия без названия")
+        self.city = self._validate_str(city, default="Город не указан")
+        self.salary_from = self._validate_salary(salary_from)
+        self.salary_to = self._validate_salary(salary_to)
+        self.currency = self._normalize_currency(currency)
+        self.requirement = self._coerce_optional_str(requirement)
+        self.responsibility = self._coerce_optional_str(responsibility)
+        self.url = self._validate_url(url)
+        self.alternate_url = self._coerce_optional_str(alternate_url)
+        self.employer = self._coerce_optional_str(employer)
 
     @staticmethod
-    def from_hh_json_to_vacancy(vacancy_info: dict) -> Tuple[
-        Optional[str],  # name
-        Optional[str],  # city
-        Optional[str],  # salary_currency
-        Optional[Union[int, None]],  # salary_from
-        Optional[Union[int, None]],  # salary_to
-        Optional[str],  # responsibility
-        Optional[str]   # url
-    ] | None:
-        """
-        Функция принимает на вход словарь с информацией о вакансии и подготавливает аргументы для инициирования Vacancy
-        :param vacancy_info: dict
-        :return: атрибуты, необходимые для инициализации объекта класса Vacancy
-        """
-        try:
-
-            # Проверяем, что vacancy_info не пустой
-            if not vacancy_info:
-                return None
-
-            name = vacancy_info.get('name', 'Вакансия без названия')
-
-            area = vacancy_info.get('area')
-            city = area.get('name', 'Город не указан') if area else 'Город не указан'
-
-            # Проверяем наличие salary перед доступом к его полям
-            salary_info = vacancy_info.get('salary', {})
-            salary_currency = salary_info.get('currency', 'Валюта не указана')
-            salary_from = salary_info.get('from', 0)
-            salary_to = salary_info.get('to', 0)
-
-            snippet = vacancy_info.get('snippet', {})
-            responsibility = snippet.get('responsibility', 'Должностные обязанности не указаны')
-            url = vacancy_info.get('url', 'url вакансии не указан')
-
-            return name, city, salary_currency, salary_from, salary_to, responsibility, url
-
-        except Exception as e:
-            print(f'При загрузке информации о вакансии возникла ошибка: {e}')
+    def _validate_id(value: Optional[str]) -> Optional[str]:
+        """Приводит идентификатор к строке без пустых значений."""
+        if value is None:
             return None
+        s = str(value).strip()
+        return s or None
+
+    @staticmethod
+    def _validate_str(value: Any, *, default: str) -> str:
+        """Обязательная строка с дефолтом для пустых/None."""
+        s = str(value).strip() if value is not None else ""
+        return s or default
+
+    @staticmethod
+    def _coerce_optional_str(value: Any) -> Optional[str]:
+        """Необязательная строка: пустые строки → None."""
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s or None
+
+    @staticmethod
+    def _validate_salary(value: Any) -> Optional[int]:
+        """Корректная зарплата: целое неотрицательное или None."""
+        if value is None:
+            return None
+        try:
+            iv = int(value)
+        except (TypeError, ValueError):
+            return None
+        return iv if iv >= 0 else None
+
+    @staticmethod
+    def _normalize_currency(value: Any) -> Optional[str]:
+        """Валюта в верхнем регистре (например, RUR) или None."""
+        if not value:
+            return None
+        s = str(value).strip().upper()
+        return s or None
+
+    @staticmethod
+    def _validate_url(value: Any) -> str:
+        """URL обязателен; пустой → подставляем заглушку '-'."""
+        s = str(value).strip() if value is not None else ""
+        return s or "-"
+
+
+    def _effective_salary(self) -> int:
+        """
+        Эффективное значение для сравнения вакансий:
+        среднее из (salary_from, salary_to); один край — он и есть значение;
+        отсутствуют оба — 0.
+        :return: целое число для сравнения
+        """
+        a = self.salary_from
+        b = self.salary_to
+        if a is not None and b is not None:
+            return (a + b) // 2
+        if a is not None:
+            return a
+        if b is not None:
+            return b
+        return 0
+
+    # Сравнения по зарплате
+    def __eq__(self, other: object) -> bool:
+        """
+        Равенство по эффективной зарплате.
+        :param other: другой объект c возможностью применить к нему _effective_salary
+        :return: True/False или NotImplemented для чужих типов
+        """
+        if not isinstance(other, Vacancy):
+            return NotImplemented
+        return self._effective_salary() == other._effective_salary()
+
+    def __lt__(self, other: "Vacancy") -> bool:
+        """
+        Меньше по эффективной зарплате (используется при сортировке).
+        """
+        if not isinstance(other, Vacancy):
+            return NotImplemented
+        return self._effective_salary() < other._effective_salary()
+
+    def __le__(self, other: "Vacancy") -> bool:
+        """Меньше или равно по эффективной зарплате."""
+        if not isinstance(other, Vacancy):
+            return NotImplemented
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __gt__(self, other: "Vacancy") -> bool:
+        """Больше по эффективной зарплате."""
+        if not isinstance(other, Vacancy):
+            return NotImplemented
+        return other.__lt__(self)
+
+    def __ge__(self, other: "Vacancy") -> bool:
+        """Больше или равно по эффективной зарплате."""
+        if not isinstance(other, Vacancy):
+            return NotImplemented
+        return other.__le__(self)
+
+    def __str__(self) -> str:
+        """
+        Читаемое представление вакансии.
+        :return: строка с названием, городом и вилкой зарплаты
+        """
+        sal_from = self.salary_from if self.salary_from is not None else "-"
+        sal_to = self.salary_to if self.salary_to is not None else "-"
+        cur = self.currency or ""
+        return f"{self.name} — {self.city}; зарплата: от {sal_from} до {sal_to} {cur}".strip()
+
+    def to_dict(self) -> dict:
+        """
+        Представление вакансии в словаре (для JSONSaver).
+        :return: словарь с данными вакансии
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "area": {"name": self.city},
+            "salary": {
+                "from": self.salary_from,
+                "to": self.salary_to,
+                "currency": self.currency,
+            },
+            "snippet": {
+                "requirement": self.requirement,
+                "responsibility": self.responsibility,
+            },
+            "url": self.url,
+            "alternate_url": self.alternate_url,
+            "employer": {"name": self.employer} if self.employer else None,
+        }
 
 
     @classmethod
-    def cast_to_object_list(cls, vacancies_list: json) -> list["Vacancy"]:
+    def from_hh_dict(cls, data: Mapping[str, Any]) -> "Vacancy":
         """
-        Преобразование набора данных из JSON в список объектов Vacancy
-        :param vacancies_list: JSON файл со списком вакансий
-        :return:
+        Построить Vacancy из словаря ответа hh.ru.
+
+        Ожидаемые поля:
+            id, name, area.name, salary.{from,to,currency},
+            snippet.{requirement,responsibility}, url, alternate_url, employer.name
+        :param data: словарь одной вакансии из API hh.ru
+        :return: объект Vacancy
         """
-        vacancy_objects = []
-        for vacancy_data in vacancies_list:
-            try:
-                # Получаем данные из JSON
-                vacancy_params = cls.from_hh_json_to_vacancy(vacancy_data)
-                if vacancy_params:
-                    # Создаем объект Vacancy
-                    vacancy = Vacancy(*vacancy_params)
-                    vacancy_objects.append(vacancy)
-            except Exception as e:
-                print(f'Ошибка при создании объекта вакансии: {e}')
-        return vacancy_objects
+        area = data.get("area") or {}
+        salary = data.get("salary") or {}
+        snippet = data.get("snippet") or {}
+        employer = data.get("employer") or {}
 
-
-if __name__ == '__main__':
-    from src.files import JSONSaver
-    file = JSONSaver()
-    vacancies_json = file.load_from_json()  # Получаем список словарей из JSON
-
-    # Создаем список объектов Vacancy
-    vacancy_objects = []
-    for vacancy_data in vacancies_json:
-        try:
-            # Получаем параметры для создания объекта
-            params = Vacancy.from_hh_json_to_vacancy(vacancy_data)
-            if params:
-                # Создаем объект Vacancy с полученными параметрами
-                vacancy = Vacancy(*params)
-                vacancy_objects.append(vacancy)
-        except Exception as e:
-            print(f'Ошибка при создании объекта вакансии: {e}')
-
-    # Теперь можно работать со списком объектов
-    num = 1
-    for vac in vacancy_objects:
-
-        print(
-            f"{num}Вакансия: {vac.name}, Город: {vac.city}, Зарплата: {vac.salary_from}-{vac.salary_to} {vac.salary_currency}"
+        return cls(
+            id=str(data.get("id")) if data.get("id") is not None else None,
+            name=str(data.get("name") or "").strip(),
+            city=str(area.get("name") or "").strip(),
+            salary_from=salary.get("from"),
+            salary_to=salary.get("to"),
+            currency=salary.get("currency"),
+            requirement=snippet.get("requirement"),
+            responsibility=snippet.get("responsibility"),
+            url=str(data.get("url") or "").strip(),
+            alternate_url=str(data.get("alternate_url") or "").strip() or None,
+            employer=str(employer.get("name") or "").strip() or None,
         )
-        num += 1
+
+    @staticmethod
+    def cast_to_object_list(items: Iterable[Mapping[str, Any]]) -> List["Vacancy"]:
+        """
+        Преобразовать коллекцию словарей HH в список объектов Vacancy.
+        Некорректные элементы пропускаются.
+
+        :param items: итерируемая коллекция словарей hh.ru
+        :return: список вакансий
+        """
+        result: List[Vacancy] = []
+        for d in items:
+            try:
+                result.append(Vacancy.from_hh_dict(d))
+            except Exception:
+                continue
+        return result

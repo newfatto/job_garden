@@ -1,6 +1,5 @@
 from typing import Any, Dict, List
 from src.base import Parser
-from src.files import JSONSaver
 import requests
 from requests import Session, Response
 
@@ -78,20 +77,3 @@ class HeadHunterAPI(Parser):
     def __str__(self) -> str:
         """Краткое представление клиента (для логов/отладки)."""
         return f"HeadHunterAPI(base_url={self._base_url!r}, per_page={self._per_page})"
-
-
-if __name__ == '__main__':
-    hh = HeadHunterAPI(user_agent="job-garden/1.0", per_page=50)
-    vacancies = hh.load_vacancies("Java")  # ← теперь это список словарей
-    JSONSaver().save_to_json(vacancies)  # файл перезапишется (пока так в твоём JSONSaver)
-
-    try:
-        hh.load_vacancies("Java")
-
-        # Проверяем результат
-        print("Сохранено вакансий:", len(vacancies))
-        print("Пример вакансии:", vacancies[0] if vacancies else "Файл пуст")
-
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
-
