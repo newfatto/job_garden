@@ -1,9 +1,70 @@
-from typing import Any, Iterable, Mapping, Optional, Tuple, List, TYPE_CHECKING
-from src.vacancy import Vacancy
 import re
+from typing import Any, List, Mapping, Optional, Tuple
 
-if TYPE_CHECKING:
-    from src.vacancy import Vacancy
+from src.vacancy import Vacancy
+
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _prompt_nonempty(prompt: str) -> str:
+    """
+    Спрашивает строку до тех пор, пока пользователь не введёт непустое значение.
+
+    :param prompt: текст подсказки
+    :return: непустая строка
+    """
+    while True:
+        s = input(prompt).strip()
+        if s:
+            return s
+        print("Пустой ввод. Попробуйте ещё раз.")
+
+
+def _prompt_positive_int(prompt: str, *, default: Optional[int] = None) -> int:
+    """
+    Спрашивает целое положительное число. Можно задать значение по умолчанию:
+    при пустом вводе вернётся default.
+
+    :param prompt: текст подсказки
+    :param default: значение по умолчанию для пустого ввода
+    :return: целое > 0
+    """
+    while True:
+        s = input(prompt).strip()
+        if not s and default is not None:
+            return default
+        if s.isdigit() and int(s) > 0:
+            return int(s)
+        print("Нужно ввести целое положительное число.")
+
+
+def _prompt_salary_range(prompt: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Просит у пользователя диапазон зарплаты и возвращает (low, high).
+    Пустая строка -> (None, None).
+    """
+    while True:
+        s = input(prompt).strip()
+
+        if not s:
+            return (None, None)
+
+        if not re.search(r"\d", s):
+            print("Нужно ввести хотя бы одно число.")
+            continue
+
+        low, high = parse_salary_range(s)
+
+        if low is None and high is None:
+            print("Не понял диапазон. Примеры: 150000, 100000-200000")
+            continue
+
+        if low is not None and high is not None and low > high:
+            print("Левая граница больше правой. Попробуйте снова.")
+            continue
+
+        return (low, high)
+
 
 def pick_identity(v: Mapping[str, Any]) -> Optional[str]:
     """
@@ -34,14 +95,17 @@ def filter_vacancies(vacancies_list: List[Vacancy], filter_words: List[str]) -> 
     keys = [w.lower() for w in filter_words]
 
     def ok(v: Vacancy) -> bool:
-        hay = " ".join([
-            v.name or "",
-            v.requirement or "",
-            v.responsibility or "",
-        ]).lower()
+        hay = " ".join(
+            [
+                v.name or "",
+                v.requirement or "",
+                v.responsibility or "",
+            ]
+        ).lower()
         return any(k in hay for k in keys)
 
     return [v for v in vacancies_list if ok(v)]
+
 
 def get_vacancies_by_salary(
     vacancies: List[Vacancy],
@@ -56,6 +120,7 @@ def get_vacancies_by_salary(
     :return: отфильтрованный список
     """
     low, high = salary_range
+
     def within(v: Vacancy) -> bool:
         val = v._effective_salary()
         if low is not None and val < low:
@@ -65,6 +130,7 @@ def get_vacancies_by_salary(
         return True
 
     return [v for v in vacancies if within(v)]
+
 
 def sort_get_top_vacancies(vacancies: List[Vacancy], top_n: int) -> List[Vacancy]:
     """
@@ -78,6 +144,7 @@ def sort_get_top_vacancies(vacancies: List[Vacancy], top_n: int) -> List[Vacancy
     if n == 0:
         return []
     return sorted(vacancies, reverse=True)[:n]
+
 
 def parse_salary_range(s: str) -> Tuple[Optional[int], Optional[int]]:
     """

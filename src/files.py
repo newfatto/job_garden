@@ -1,8 +1,11 @@
-from src.base import FileWorker
 import json
+import os
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Union
+
 from config import JSON_FILE_PATH_STR
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Union, TYPE_CHECKING
+from src.base import FileWorker
 from src.utils import pick_identity
+
 if TYPE_CHECKING:
     from src.vacancy import Vacancy
 
@@ -11,23 +14,28 @@ class JSONSaver(FileWorker):
     """
     Коннектор для работы с JSON-файлом вакансий.
 
-    Добавляет вакансию в файл без перезаписи
-    Не допускает дублей (по id/url/alternate_url)
-    Умеет фильтровать и удалять записи
+    - добавляет вакансии в файл без перезаписи всего файла;
+    - не допускает дублей (по id / url / alternate_url);
+    - умеет фильтровать и удалять записи.
     """
+
     def __init__(self, filename: str = JSON_FILE_PATH_STR) -> None:
         """
         :param filename: путь к JSON-файлу для хранения вакансий
         """
-        self._filename: str = filename
+        self._filename = filename
 
     def _read_all(self) -> List[Dict[str, Any]]:
         """Безопасное чтение всего файла как списка словарей."""
         try:
+            # пустой или отсутствующий файл — просто []
+            if not os.path.exists(self._filename) or os.path.getsize(self._filename) == 0:
+                return []
             with open(self._filename, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return data if isinstance(data, list) else []
-        except FileNotFoundError:
+        except json.JSONDecodeError:
+            # битый JSON — начинаем с чистого листа
             return []
         except OSError as e:
             print(f"Ошибка чтения файла: {e}")
@@ -36,11 +44,12 @@ class JSONSaver(FileWorker):
     def _write_all(self, data: List[Dict[str, Any]]) -> None:
         """Полная запись списка словарей в файл."""
         try:
+            # гарантируем наличие папки
+            os.makedirs(os.path.dirname(self._filename) or ".", exist_ok=True)
             with open(self._filename, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except OSError as e:
             print(f"Ошибка записи в файл: {e}")
-
 
     def load_from_json(self) -> List[Dict[str, Any]]:
         """
@@ -50,40 +59,33 @@ class JSONSaver(FileWorker):
         return self._read_all()
 
     def save_to_json(self, vacancies: Iterable[Mapping[str, Any]]) -> None:
-        """
-        Сохранить список вакансий, добавляя их к уже сохранённым,
-        и убирая дубли по id/url/alternate_url.
-
-        :param vacancies: итерируемый набор словарей вакансий
-        """
         current = self._read_all()
-        index = {}
+        index: Dict[str, int] = {}
 
-        for i, v in enumerate(current):
-            ident = pick_identity(v)
+        for i, v_existing in enumerate(current):
+            ident = pick_identity(v_existing)
             if ident:
                 index[ident] = i
 
-        for v in vacancies:
-            if not isinstance(v, Mapping):
+        for v_new in vacancies:
+            if not isinstance(v_new, Mapping):
                 print("Предупреждение: пропущен элемент не-словарь при сохранении.")
                 continue
 
-            ident = pick_identity(v)
+            ident = pick_identity(v_new)
             if ident and ident in index:
-                # Обновляем существующую запись (например, если изменилась зарплата)
-                current[index[ident]] = dict(v)
+                current[index[ident]] = dict(v_new)  # обновляем запись
             else:
-                current.append(dict(v))
+                current.append(dict(v_new))
                 if ident:
                     index[ident] = len(current) - 1
 
         self._write_all(current)
 
-
     def add_vacancy(self, vacancy: Union[Mapping[str, Any], "Vacancy"]) -> None:
         """
         Добавить одну вакансию в файл.
+        :param vacancy: словарь вакансии или объект Vacancy с методом to_dict()
         """
         if isinstance(vacancy, Mapping):
             self.save_to_json([vacancy])
@@ -99,16 +101,15 @@ class JSONSaver(FileWorker):
         raise TypeError("add_vacancy ожидает Mapping или объект Vacancy с to_dict().")
 
     def get_vacancy_info(
-            self,
-            *,
-            keyword: Optional[str] = None,
-            city: Optional[str] = None,
-            min_salary: Optional[int] = None,
-            currency: Optional[str] = None,
+        self,
+        *,
+        keyword: Optional[str] = None,
+        city: Optional[str] = None,
+        min_salary: Optional[int] = None,
+        currency: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Вернёт список вакансий, удовлетворяющих критериям.
-
         :param keyword: ключевое слово (ищется в названии и описании)
         :param city: город (area.name или address.city)
         :param min_salary: минимальная желаемая "from" (salary.from >= min_salary)
@@ -154,16 +155,14 @@ class JSONSaver(FileWorker):
 
         return [v for v in data if match(v)]
 
-
     def delete_vacancy(
-            self,
-            *,
-            vacancy_id: Optional[str] = None,
-            url: Optional[str] = None,
+        self,
+        *,
+        vacancy_id: Optional[str] = None,
+        url: Optional[str] = None,
     ) -> int:
         """
         Удалить вакансию(и) по `id` или `url`/`alternate_url`.
-
         :param vacancy_id: строковый ID вакансии hh.ru
         :param url: ссылка ('url' или 'alternate_url')
         :return: количество удалённых записей

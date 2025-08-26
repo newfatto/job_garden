@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Mapping, Optional
 
+
 class Parser(ABC):
     """
     Абстрактный клиент для API сервисов с вакансиями.
@@ -28,6 +29,7 @@ class Parser(ABC):
         :return: список словарей из ответа API (обычно data["items"])
         """
         pass
+
 
 class FileWorker(ABC):
     """

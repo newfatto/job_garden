@@ -25,24 +25,52 @@ def test_from_hh_dict_and_str() -> None:
 def test_comparison_effective_salary() -> None:
     """Сравнения работают по «эффективной» зарплате (from/to)."""
     low = Vacancy(
-        id="L", name="Low", city="-", salary_from=100000, salary_to=None,
-        currency="RUR", requirement=None, responsibility=None, url="-",
+        id="L",
+        name="Low",
+        city="-",
+        salary_from=100000,
+        salary_to=None,
+        currency="RUR",
+        requirement=None,
+        responsibility=None,
+        url="-",
     )
     mid = Vacancy(
-        id="M", name="Mid", city="-", salary_from=100000, salary_to=200000,
-        currency="RUR", requirement=None, responsibility=None, url="-",
+        id="M",
+        name="Mid",
+        city="-",
+        salary_from=100000,
+        salary_to=200000,
+        currency="RUR",
+        requirement=None,
+        responsibility=None,
+        url="-",
     )
     high = Vacancy(
-        id="H", name="High", city="-", salary_from=None, salary_to=300000,
-        currency="RUR", requirement=None, responsibility=None, url="-",
+        id="H",
+        name="High",
+        city="-",
+        salary_from=None,
+        salary_to=300000,
+        currency="RUR",
+        requirement=None,
+        responsibility=None,
+        url="-",
     )
 
     assert low < mid < high
     assert high > mid > low
 
     another_low = Vacancy(
-        id="L2", name="Low2", city="-", salary_from=100000, salary_to=None,
-        currency="RUR", requirement=None, responsibility=None, url="-",
+        id="L2",
+        name="Low2",
+        city="-",
+        salary_from=100000,
+        salary_to=None,
+        currency="RUR",
+        requirement=None,
+        responsibility=None,
+        url="-",
     )
     assert low == another_low
 
@@ -50,10 +78,16 @@ def test_comparison_effective_salary() -> None:
 def test_to_dict_roundtrip() -> None:
     """to_dict возвращает согласованный с hh.ru словарь (ключевые поля на месте)."""
     v = Vacancy(
-        id="T1", name="Test", city="Москва",
-        salary_from=150_000, salary_to=200_000, currency="RUR",
-        requirement="Python", responsibility="Разработка",
-        url="https://api.hh.ru/vacancy/T1", alternate_url="https://hh.ru/vacancy/T1",
+        id="T1",
+        name="Test",
+        city="Москва",
+        salary_from=150_000,
+        salary_to=200_000,
+        currency="RUR",
+        requirement="Python",
+        responsibility="Разработка",
+        url="https://api.hh.ru/vacancy/T1",
+        alternate_url="https://hh.ru/vacancy/T1",
         employer="Test Co",
     )
     d = v.to_dict()

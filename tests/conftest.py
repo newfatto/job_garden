@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Callable, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional
 
 import pytest
 
@@ -60,6 +60,7 @@ def make_vac() -> Callable[..., Vacancy]:
     Пример:
         v = make_vac(name="Python Dev", salary_from=150_000)
     """
+
     def _make_vac(
         *,
         name: str,
@@ -84,4 +85,5 @@ def make_vac() -> Callable[..., Vacancy]:
             alternate_url=None,
             employer=None,
         )
+
     return _make_vac

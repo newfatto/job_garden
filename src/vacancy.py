@@ -126,7 +126,6 @@ class Vacancy:
         s = str(value).strip() if value is not None else ""
         return s or "-"
 
-
     def _effective_salary(self) -> int:
         """
         Эффективное значение для сравнения вакансий:
@@ -213,7 +212,6 @@ class Vacancy:
             "alternate_url": self.alternate_url,
             "employer": {"name": self.employer} if self.employer else None,
         }
-
 
     @classmethod
     def from_hh_dict(cls, data: Mapping[str, Any]) -> "Vacancy":

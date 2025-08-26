@@ -1,10 +1,12 @@
-from typing import Any, Dict, List
-from src.base import Parser
+from typing import Any, Dict, List, Mapping, cast
+
 import requests
-from requests import Session, Response
+from requests import Response, Session
+
+from src.base import Parser
+
 
 class HeadHunterAPI(Parser):
-
     """
     Клиент для работы с API hh.ru.
 
@@ -16,6 +18,7 @@ class HeadHunterAPI(Parser):
     Предоставляет единый публичный метод `load_vacancies`, который
     собирает до `max_items` вакансий по ключевому слову.
     """
+
     __slots__ = ("_base_url", "_headers", "_per_page", "_session")
 
     def __init__(self, user_agent: str = "job-garden/1.0", per_page: int = 50) -> None:
@@ -28,7 +31,7 @@ class HeadHunterAPI(Parser):
         self._per_page: int = max(1, min(per_page, 100))
         self._session: Session = requests.Session()
 
-    def _request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _request(self, params: Mapping[str, Any]) -> Dict[str, Any]:
         """
         Выполняет GET-запрос к hh.ru и возвращает JSON.
 
@@ -36,14 +39,12 @@ class HeadHunterAPI(Parser):
         :raises RuntimeError: если API вернул неуспешный статус
         :return: распарсенный JSON-ответ как словарь
         """
-        resp: Response = self._session.get(
-            self._base_url, headers=self._headers, params=params, timeout=20
-        )
+        resp: Response = self._session.get(self._base_url, headers=self._headers, params=params, timeout=20)
         if resp.status_code != 200:
             preview = resp.text[:200] if resp.text else ""
             raise RuntimeError(f"HH API error {resp.status_code}. {preview}")
-        return resp.json()
-
+        data = cast(Dict[str, Any], resp.json())  # <- см. п.3
+        return data
 
     def load_vacancies(self, keyword: str, *, max_items: int = 2000) -> List[Dict[str, Any]]:
         """
